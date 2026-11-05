@@ -1,0 +1,9 @@
+dist/
+dist-next/
+.cache/
+.DS_Store
+config.local.json
+node_modules/
+__pycache__/
+*.pyc
+test-results/

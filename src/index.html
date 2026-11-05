@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#172f3a">
+  <meta name="description" content="여행 계획과 GPX 기록으로 보는 차량 이동, 관광지 체류와 도보 탐방 지도">
+  <title>Journey Atlas · 나의 여행 지도</title>
+  <link rel="icon" href="./favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="./vendor/leaflet/leaflet.css">
+  <link rel="stylesheet" href="./styles.css">
+  <script src="./vendor/leaflet/leaflet.js" defer></script>
+  <script type="module" src="./app.js"></script>
+</head>
+<body>
+  <header class="header">
+    <a class="brand" href="./" aria-label="Journey Atlas 처음으로"><span class="brand-icon">J<span>·</span></span><span>JOURNEY ATLAS<small>나의 여행을 따라가다</small></span></a>
+    <div class="header-actions"><button id="import-button" class="button">＋ GPX 추가</button><button id="settings-button" class="button subtle">분류 기준</button><a href="https://github.com/barmi/my-journey-gpx" target="_blank" rel="noreferrer" class="source-link">GitHub ↗</a></div>
+    <input id="file-input" type="file" accept=".gpx" multiple hidden>
+  </header>
+  <main>
+    <div class="intro"><div><span class="eyebrow">ROUTES & MOMENTS</span><h1>이동의 시간, 머문 장소.</h1><p>길 위의 기록을 차량 이동과 관광지 탐방으로 나누어 봅니다.</p></div><div class="dataset-status" id="dataset-status" role="status">기록을 불러오는 중…</div></div>
+    <section class="workspace" aria-label="여행 지도와 기록">
+      <aside class="sidebar">
+        <label class="field-label" for="journey-select">여행 선택</label><select id="journey-select" aria-label="여행 선택"></select>
+        <div class="sidebar-heading"><h2>날짜별 기록</h2><span id="day-count"></span></div>
+        <div id="day-list" class="day-list"></div>
+        <div class="sidebar-foot"><span class="status-dot"></span><span>GPX가 추가되면 날짜가 자동으로 늘어납니다.</span></div>
+      </aside>
+      <div class="map-column">
+        <div class="map-heading"><div><span class="eyebrow" id="selected-date"></span><h2 id="selected-title">여행 경로</h2></div><button id="fit-map" class="button small">전체 경로 ↗</button></div>
+        <div class="map-wrap"><div id="map" aria-label="차량 이동 경로와 관광지 탐방 구역 지도"></div><div id="map-error" class="map-error" hidden>배경 지도를 불러오지 못했습니다. 인터넷 연결을 확인해 주세요. GPX 경로는 계속 표시됩니다.</div></div>
+        <div class="map-toolbar" id="map-toolbar"><label><input type="checkbox" data-layer="drive" checked><i class="swatch drive"></i>차량 이동</label><label><input type="checkbox" data-layer="visit" checked><i class="swatch visit"></i>관광지 체류</label><label><input type="checkbox" data-layer="walk" checked><i class="swatch walk"></i>도보·탐방</label><label><input type="checkbox" data-layer="stay" checked><i class="swatch stay"></i>기타 체류</label><label><input type="checkbox" data-layer="plan" checked><i class="swatch plan"></i>계획</label></div>
+      </div>
+    </section>
+    <section class="metrics" aria-label="기록 시간 요약">
+      <div class="metric"><span><i class="swatch drive"></i>차량 이동 <small>추정</small></span><strong id="drive-time">—</strong><small id="drive-distance">—</small></div>
+      <div class="metric"><span><i class="swatch visit"></i>관광지 체류 <small>추정</small></span><strong id="visit-time">—</strong><small id="visit-count">등록 관광지 주변의 비차량 시간</small></div>
+      <div class="metric"><span><i class="swatch walk"></i>도보·탐방 <small>추정</small></span><strong id="walk-time">—</strong><small id="other-time">—</small></div>
+    </section>
+    <section class="timeline-section">
+      <div class="section-heading"><div><span class="eyebrow">A DAY IN MOTION</span><h2>하루의 흐름</h2></div><div id="timezone-label" class="muted"></div></div>
+      <div id="timeline" class="timeline" aria-label="차량 이동과 체류 시간표"></div>
+      <div class="timeline-bottom"><div id="record-range" class="muted"></div><span class="unknown-key"><i class="swatch unknown"></i>기록 단절은 이동·체류 시간에서 제외</span></div>
+    </section>
+    <section class="details-grid">
+      <div><div class="section-heading"><h2>구간별 기록</h2><span class="muted" id="episode-count"></span></div><div id="episode-list" class="episode-list" aria-live="polite"></div></div>
+      <aside class="plan-panel"><span class="eyebrow">THE PLAN</span><h2>여행 일정</h2><div id="plan-detail"></div></aside>
+    </section>
+    <details class="method"><summary>시간은 어떻게 구분하나요?</summary><div><p>속도와 주변 이동 흐름을 함께 보고 차량 이동을 추정합니다. 관광지 체류는 등록된 관광지 반경 안에서 차량 이동으로 분류되지 않은 시간이 일정 시간 이상 이어질 때 집계합니다. 입장·관람 여부를 확인한 기록은 아닙니다.</p><p>등록 관광지 밖의 지속적인 도보는 ‘도보·탐방’, 정차·휴식·숙박 등은 ‘기타 체류’로 구분합니다. 기록 단절과 큰 GPS 점프는 별도 표시합니다. 속도만으로 차량·도보를 완벽히 구분할 수 없으므로 분류 기준과 수동 보정을 사용할 수 있습니다.</p><p>15초 단위 좌표 중앙값으로 GPS 흔들림을 줄였으며, 표시 거리와 시간에는 오차가 있습니다. 관광지 반경은 여행계획의 대략적 구역입니다. 예전 기록에는 등록 관광지가 없어 도보·탐방과 기타 체류로 표시되는 구간이 있습니다.</p><div id="quality-summary"></div></div></details>
+    <footer><span>JOURNEY ATLAS · 기록은 쌓이고, 여행은 이어집니다.</span><span>지도 © OpenStreetMap contributors · <a href="https://www.openstreetmap.org/fixthemap" target="_blank" rel="noreferrer">지도 오류 제보 ↗</a></span></footer>
+  </main>
+  <dialog id="settings-dialog"><form id="settings-form"><div class="dialog-heading"><h2>분류 기준</h2><button type="button" id="settings-close" class="button subtle" aria-label="닫기">✕</button></div><p>이 브라우저에서 적용되는 추정 기준입니다.</p><label>차량 판단 속도 <span><input id="vehicle-speed" type="number" min="6" max="40" step="1" required> km/h</span></label><label>최소 관광지 체류 <span><input id="min-visit" type="number" min="3" max="60" step="1" required> 분</span></label><div class="dialog-actions"><button type="button" id="settings-default" class="button">기본값</button><button class="button primary" type="submit">적용하기</button></div></form></dialog>
+  <div id="toast" class="toast" role="status" hidden></div>
+</body>
+</html>
