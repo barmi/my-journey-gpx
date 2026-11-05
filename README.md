@@ -30,7 +30,7 @@ python3 scripts/serve.py --source /absolute/path/to/gpx --port 8000
 
 1. `data/gpx/`에 새 GPX를 복사합니다. 하위 폴더도 자동으로 읽습니다.
 2. 로컬 서버는 변경을 감지해 화면을 갱신합니다.
-3. `main`에 커밋·푸시하면 GitHub Actions가 빌드·검증 후 Pages를 자동 배포합니다.
+3. `main`에 커밋·푸시하면 GitHub Actions가 **기록 시작 시각이 가장 최근인 GPX 20개**를 선택해 빌드·검증 후 Pages를 자동 배포합니다. 로컬 서버는 전체 GPX를 사용합니다.
 
 ```sh
 git add data/gpx
@@ -39,6 +39,17 @@ git push origin main
 ```
 
 파일명과 상관없이 GPX 내부 시각과 좌표로 날짜·지역을 분류합니다. 스페인·포르투갈의 새 기록은 기존 여행에 이어집니다. 화면의 `GPX 추가`는 현재 화면에 임시로 더하는 기능입니다. 공개 페이지에 계속 남기려면 저장소에 파일을 추가하세요.
+
+최근 20개는 각 GPX의 첫 기록 시각(UTC)을 기준으로 선택합니다. 파일명·수정일·내보낸 시각은 사용하지 않으며, 기록 시각이 없는 파일은 최근 파일 선택에서 제외합니다. 같은 시작 시각은 경로명 순서로 정렬합니다. 새 기록이 들어오면 가장 오래된 파일이 배포 대상에서 빠집니다. 배포에서 빠진 GPX 원본은 저장소와 로컬에 계속 보관합니다.
+
+GitHub Pages용 결과를 로컬에서 별도로 확인하려면:
+
+```sh
+python3 scripts/build.py --recent-limit 20 --output .cache/pages-preview
+python3 -m http.server 8001 --bind 127.0.0.1 --directory .cache/pages-preview
+```
+
+이 미리보기는 `dist/`의 전체 로컬 데이터와 분리됩니다. 저장소에는 여전히 전체 원본이 있으므로 공개 저장소에서 GPX 원본에 접근 가능한 범위는 달라지지 않습니다.
 
 ## 프로젝트 구조
 

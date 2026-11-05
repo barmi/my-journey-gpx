@@ -42,6 +42,40 @@ def group_for(lat, lon):
     if 20 < lon < 38 and 35 < lat < 43: return 'greece'
     return 'other'
 
+def first_recorded_time(path):
+    """Read just the first timed track point; ignore export/metadata timestamps."""
+    point_kind = None
+    waypoint_time = None
+    try:
+        with path.open('rb') as stream:
+            for event, elem in ET.iterparse(stream, events=('start', 'end')):
+                tag = elem.tag.rsplit('}', 1)[-1]
+                if event == 'start' and tag in ('trkpt', 'rtept', 'wpt'):
+                    point_kind = tag
+                elif event == 'end':
+                    if tag == 'time' and point_kind and elem.text:
+                        try:
+                            dt = datetime.fromisoformat(elem.text.strip().replace('Z', '+00:00'))
+                            if dt.tzinfo is None: dt = dt.replace(tzinfo=timezone.utc)
+                            timestamp = dt.timestamp()
+                            if point_kind != 'wpt': return timestamp
+                            if waypoint_time is None: waypoint_time = timestamp
+                        except (ValueError, OverflowError):
+                            pass
+                    if tag in ('trkpt', 'rtept', 'wpt'): point_kind = None
+                    elem.clear()
+    except (ET.ParseError, OSError):
+        return None
+    return waypoint_time
+
+def select_recent_paths(paths, limit):
+    if limit is None: return paths
+    if limit <= 0: raise ValueError('recent_limit must be a positive integer')
+    dated = [(first_recorded_time(path), path) for path in paths]
+    dated = [(timestamp, path) for timestamp, path in dated if timestamp is not None]
+    dated.sort(key=lambda item: (-item[0], unicodedata.normalize('NFC', str(item[1]))))
+    return [path for _, path in dated[:limit]]
+
 def parse_gpx(path, overrides):
     root = ET.parse(path).getroot()
     tag = lambda e: e.tag.rsplit('}', 1)[-1]
@@ -89,14 +123,16 @@ def parse_gpx(path, overrides):
     keys = set((p[0], p[1], p[2]) for p in originals if p[2] is not None)
     return rec, {'record': rec, 'chunks': chunks, 'overrides': custom.get('intervals', [])}, keys
 
-def _build(sources=None, output=None):
+def _build(sources=None, output=None, recent_limit=None):
     out = Path(output or ROOT / 'dist')
     sources = sources or [ROOT / 'data/gpx']
     overrides_file = ROOT / 'config/overrides.json'
     overrides = json.loads(overrides_file.read_text()) if overrides_file.exists() else {}
     rows, payloads, keys, seen = [], {}, {}, set()
     paths = sorted({p.resolve() for src in sources for p in Path(src).expanduser().rglob('*') if p.is_file() and p.suffix.lower() == '.gpx'})
-    for path in paths:
+    source_count = len(paths)
+    # Select before coordinate conversion and overlap detection, to avoid processing older files.
+    for path in select_recent_paths(paths, recent_limit):
         try:
             rec, payload, points = parse_gpx(path, overrides)
         except (ET.ParseError, ValueError, KeyError, OverflowError) as e:
@@ -119,24 +155,29 @@ def _build(sources=None, output=None):
         if payload['record']['duplicateOf'] is None:
             (staging / f'data/records/{id}.json').write_text(json.dumps(payload, ensure_ascii=False, separators=(',', ':')))
     plan = json.loads((ROOT / 'data/itinerary.json').read_text())
-    fingerprint = hashlib.sha256(json.dumps([[(r['id'], r['duplicateOf']) for r in rows], overrides, plan], sort_keys=True).encode()).hexdigest()[:16]
+    policy = {'recentLimit': recent_limit, 'sourceFiles': source_count, 'selectedBy': 'first-recorded-time' if recent_limit is not None else 'all'}
+    fingerprint = hashlib.sha256(json.dumps([[(r['id'], r['duplicateOf']) for r in rows], overrides, plan, policy], sort_keys=True).encode()).hexdigest()[:16]
     index = {'version': fingerprint, 'generatedAt': datetime.now(timezone.utc).isoformat(), 'groups': GROUPS, 'records': rows, 'plan': plan,
+             'buildPolicy': policy,
              'counts': {'files': len(rows), 'duplicates': sum(r['duplicateOf'] is not None for r in rows), 'empty': sum(r['group'] == 'empty' for r in rows)}}
     (staging / 'data/index.json').write_text(json.dumps(index, ensure_ascii=False, separators=(',', ':')))
     if out.exists(): shutil.rmtree(out)
     staging.rename(out)
-    print(f'Built {len(rows)} GPX files → {out} ({index["counts"]["duplicates"]} overlapping, {index["counts"]["empty"]} empty)', flush=True)
+    scope = f'latest {recent_limit} of {source_count}' if recent_limit is not None else f'all {source_count}'
+    print(f'Built {len(rows)} GPX files ({scope}) → {out} ({index["counts"]["duplicates"]} overlapping, {index["counts"]["empty"]} empty)', flush=True)
     return index
 
-def build(sources=None, output=None):
+def build(sources=None, output=None, recent_limit=None):
     (ROOT / '.cache').mkdir(exist_ok=True)
     with (ROOT / '.cache/build.lock').open('w') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
-        return _build(sources, output)
+        return _build(sources, output, recent_limit)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--source', action='append', help='GPX source folder (repeatable; default data/gpx)')
     parser.add_argument('--output')
+    parser.add_argument('--recent-limit', type=int, help='Include only N most recent GPX files by their first recorded point time; default all')
     args = parser.parse_args()
-    build(args.source, args.output)
+    if args.recent_limit is not None and args.recent_limit <= 0: parser.error('--recent-limit must be greater than zero')
+    build(args.source, args.output, args.recent_limit)

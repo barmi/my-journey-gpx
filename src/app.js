@@ -47,8 +47,10 @@ function hydrateControls(){
   }).join('');
   $('#day-list').querySelectorAll('[data-date]').forEach(button=>button.onclick=()=>{state.date=button.dataset.date;remember();hydrateControls();renderDay();});
   const latest=index.records.filter(r=>r.group!=='empty').map(r=>r.date).sort().at(-1);
-  $('#dataset-status').innerHTML=`${index.counts.files}개 GPX · 최근 기록 ${escape(latest)}<br>겹치는 파일 ${index.counts.duplicates}개는 합계에서 제외`;
-  $('#quality-summary').textContent=`전체 파일 ${index.counts.files}개 · 겹치는 파일 ${index.counts.duplicates}개 · 좌표가 없거나 읽을 수 없는 파일 ${index.counts.empty}개. 날짜 목록은 각 파일의 현지 시작일 기준입니다.`;
+  const policy=index.buildPolicy;
+  const scope=policy?.recentLimit?`원본 ${policy.sourceFiles}개 중 최근 ${policy.recentLimit}개 배포 · `:'';
+  $('#dataset-status').innerHTML=`${policy?.recentLimit?'최근 ':''}${index.counts.files}개 GPX · 최근 기록 <span class="record-date">${escape(latest)}</span><br>겹치는 파일 ${index.counts.duplicates}개는 합계에서 제외`;
+  $('#quality-summary').textContent=`${scope}포함된 파일 ${index.counts.files}개 · 겹치는 파일 ${index.counts.duplicates}개 · 좌표가 없거나 읽을 수 없는 파일 ${index.counts.empty}개. 날짜 목록과 최근 파일 선택은 각 파일의 기록 시작 시각 기준입니다.`;
 }
 async function payload(record){
   if(!payloadCache.has(record.id))payloadCache.set(record.id,fetch(`./data/records/${record.id}.json`).then(r=>{if(!r.ok)throw new Error(`${record.name} 경로를 읽지 못했습니다.`);return r.json();}));

@@ -33,12 +33,20 @@ test('time between disjoint files is explicitly marked as unrecorded',()=>{
   const merged=mergeAnalyses([a,b]);assert.equal(merged.totals.unknown.seconds,600);assert.equal(merged.totals.drive.seconds,1200);
 });
 test('bundled records conserve elapsed time and have finite non-negative measurements',()=>{
-  if(!fs.existsSync('dist/data/index.json'))return;
-  const index=JSON.parse(fs.readFileSync('dist/data/index.json'));
+  const siteDir=process.env.JOURNEY_SITE_DIR||'dist';
+  if(!fs.existsSync(`${siteDir}/data/index.json`))return;
+  const index=JSON.parse(fs.readFileSync(`${siteDir}/data/index.json`));
   const sourceCount=fs.readdirSync('data/gpx',{recursive:true}).filter(name=>name.toLowerCase().endsWith('.gpx')).length;
-  assert.equal(index.counts.files,sourceCount);assert.ok(index.counts.empty>=4);assert.ok(index.counts.duplicates>=5);
+  assert.equal(index.buildPolicy.sourceFiles,sourceCount);
+  assert.ok(index.counts.files<=sourceCount);
+  if(index.buildPolicy.recentLimit!==null)assert.ok(index.counts.files<=index.buildPolicy.recentLimit);
+  assert.equal(index.counts.files,index.records.length);
+  assert.equal(index.counts.empty,index.records.filter(r=>r.group==='empty').length);
+  assert.equal(index.counts.duplicates,index.records.filter(r=>r.duplicateOf).length);
+  const includedIds=new Set(index.records.map(r=>r.id));
+  for(const r of index.records)if(r.duplicateOf)assert.ok(includedIds.has(r.duplicateOf));
   for(const record of index.records.filter(r=>r.group!=='empty'&&!r.duplicateOf)){
-    const p=JSON.parse(fs.readFileSync(`dist/data/records/${record.id}.json`)),r=analyzeChunks(p.chunks);if(r.start===null)continue;
+    const p=JSON.parse(fs.readFileSync(`${siteDir}/data/records/${record.id}.json`)),r=analyzeChunks(p.chunks);if(r.start===null)continue;
     assert.equal(Object.values(r.totals).reduce((s,v)=>s+v.seconds,0),r.end-r.start,record.name);
     for(const v of Object.values(r.totals)){assert.ok(Number.isFinite(v.seconds)&&v.seconds>=0);assert.ok(Number.isFinite(v.meters)&&v.meters>=0);}
   }
